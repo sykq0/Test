@@ -1,0 +1,120 @@
+-- Blox Fruits: Teleport to All Chests (Blue Chests Prioritized)
+local player = game.Players.LocalPlayer
+local character = player.Character or player.CharacterAdded:Wait()
+local rootPart = character:WaitForChild("HumanoidRootPart")
+
+local WAIT_BETWEEN_CHESTS = 1.5  -- seconds between each TP
+local WAIT_AFTER_OPEN = 2.0      -- seconds to wait for chest to open
+
+local function getAllChests()
+    local blueChests = {}
+    local normalChests = {}
+
+    for _, obj in ipairs(workspace:GetDescendants()) do
+        local nameL = obj.Name:lower()
+        local isChest = nameL:find("chest")
+        local isBasePart = obj:IsA("BasePart")
+        local isModel = obj:IsA("Model")
+
+        if isChest and (isBasePart or isModel) then
+            local pos
+            if isModel and obj.PrimaryPart then
+                pos = obj.PrimaryPart.Position
+            elseif isBasePart then
+                pos = obj.Position
+            end
+
+            if pos then
+                -- Detect blue chest by name or color
+                local isBlue = nameL:find("blue") or nameL:find("rare")
+
+                -- Also check BrickColor / Color of parts
+                if not isBlue then
+                    local part = isModel and obj.PrimaryPart or obj
+                    if part then
+                        local color = part.BrickColor
+                        if color == BrickColor.new("Bright blue") or
+                           color == BrickColor.new("Medium blue") or
+                           color == BrickColor.new("Deep blue") or
+                           color == BrickColor.new("Cyan") then
+                            isBlue = true
+                        end
+                    end
+                end
+
+                if isBlue then
+                    table.insert(blueChests, {obj = obj, pos = pos})
+                else
+                    table.insert(normalChests, {obj = obj, pos = pos})
+                end
+            end
+        end
+    end
+
+    -- Sort each group by distance (nearest first)
+    local function sortByDist(list)
+        table.sort(list, function(a, b)
+            local dA = (rootPart.Position - a.pos).Magnitude
+            local dB = (rootPart.Position - b.pos).Magnitude
+            return dA < dB
+        end)
+    end
+
+    sortByDist(blueChests)
+    sortByDist(normalChests)
+
+    -- Blue chests first, then normal
+    local allChests = {}
+    for _, c in ipairs(blueChests) do table.insert(allChests, c) end
+    for _, c in ipairs(normalChests) do table.insert(allChests, c) end
+
+    return allChests
+end
+
+local function teleportTo(pos)
+    character = player.Character or player.CharacterAdded:Wait()
+    rootPart = character:WaitForChild("HumanoidRootPart")
+    rootPart.CFrame = CFrame.new(pos + Vector3.new(0, 5, 0))
+end
+
+local function farmAllChests()
+    print("=== Starting Chest Farm ===")
+
+    local chests = getAllChests()
+
+    if #chests == 0 then
+        print("No chests found in workspace!")
+        return
+    end
+
+    print("Found " .. #chests .. " chest(s). Teleporting now...")
+
+    for i, chestData in ipairs(chests) do
+        -- Re-check chest still exists
+        if chestData.obj and chestData.obj.Parent then
+            local label = chestData.obj.Name
+            print(string.format("[%d/%d] Teleporting to: %s", i, #chests, label))
+
+            teleportTo(chestData.pos)
+            task.wait(WAIT_AFTER_OPEN)
+        else
+            print(string.format("[%d/%d] Chest already gone, skipping.", i, #chests))
+        end
+    end
+
+    print("=== All Chests Done! ===")
+end
+
+-- Auto-loop farm (re-scans chests each cycle for respawns)
+local AUTO_LOOP = true   -- set to false to run only once
+local LOOP_WAIT = 5      -- seconds to wait before scanning again
+
+if AUTO_LOOP then
+    while true do
+        farmAllChests()
+        print("Waiting " .. LOOP_WAIT .. "s for chests to respawn...")
+        task.wait(LOOP_WAIT)
+    end
+else
+    farmAllChests()
+end
